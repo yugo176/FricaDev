@@ -1,0 +1,374 @@
+// Schéma « app » : données métier du réseau social.
+// Les comptes, mots de passe et tokens vivent dans le schéma « identity » du service auth.
+// Aucune relation entre les deux schémas : seul l'identifiant (sub OIDC) fait le lien,
+// ce qui permettra de séparer physiquement les bases plus tard.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("API_DATABASE_URL")
+  directUrl = env("API_DIRECT_DATABASE_URL")
+}
+
+enum PostType {
+  PROJECT
+  QUESTION
+  CODE
+  ARTICLE
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  HIDDEN
+}
+
+enum ReactionType {
+  LIKE
+  USEFUL
+}
+
+enum CommunityType {
+  COUNTRY
+  TECH
+  SCHOOL
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  REJECTED
+}
+
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+enum ReportTarget {
+  POST
+  COMMENT
+}
+
+enum OpeningStatus {
+  OPEN
+  CLOSED
+}
+
+enum Commitment {
+  VOLUNTEER
+  PAID
+  PARTNER
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+model User {
+  id          String   @id @db.Uuid
+  /// `sub` émis par le service d'identité
+  identityId  String   @unique
+  handle      String   @unique
+  displayName String
+  bio         String?
+  avatarUrl   String?
+  countryCode String?  @db.Char(2)
+  skills      String[]
+  reputation  Int      @default(0)
+  role        UserRole @default(USER)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts            Post[]
+  comments         Comment[]
+  reactions        Reaction[]
+  bookmarks        Bookmark[]
+  memberships      Membership[]
+  following        Follow[]          @relation("follower")
+  followers        Follow[]          @relation("followee")
+  reputationEvents ReputationEvent[]
+  notifications    Notification[]
+  reports          Report[]
+  commentVotes     CommentVote[]
+  applications     TeamApplication[]
+  projectRoles     ProjectMember[]
+
+  @@index([countryCode])
+}
+
+model Post {
+  id            String     @id @db.Uuid
+  type          PostType
+  status        PostStatus @default(PUBLISHED)
+  title         String
+  body          String
+  /// Calculés à l'écriture pour que les listes n'aient jamais à lire `body`
+  excerpt       String     @default("")
+  codePreview   String?
+  /// Champs propres au type (avancement d'un projet, langage d'un extrait…), validés par
+  /// `postDetailsSchema` (packages/shared). Images prévues ici plus tard (coverUrl, media).
+  details       Json?
+  editedAt      DateTime?
+  authorId      String     @db.Uuid
+  communityId   String?    @db.Uuid
+  /// Compteurs dénormalisés, mis à jour par événements (reactionCount = likeCount + usefulCount)
+  reactionCount Int        @default(0)
+  likeCount     Int        @default(0)
+  usefulCount   Int        @default(0)
+  commentCount  Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  author    User            @relation(fields: [authorId], references: [id])
+  community Community?      @relation(fields: [communityId], references: [id])
+  tags      PostTag[]
+  comments  Comment[]
+  reactions Reaction[]
+  bookmarks Bookmark[]
+  openings  TeamOpening[]
+  members   ProjectMember[]
+
+  @@index([status, createdAt(sort: Desc), id])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@index([communityId, createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
+}
+
+model Tag {
+  id    String    @id @db.Uuid
+  name  String    @unique
+  posts PostTag[]
+}
+
+model PostTag {
+  postId String @db.Uuid
+  tagId  String @db.Uuid
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([tagId])
+}
+
+model Comment {
+  id          String    @id @db.Uuid
+  postId      String    @db.Uuid
+  authorId    String    @db.Uuid
+  parentId    String?   @db.Uuid
+  body        String
+  /// Réponse retenue par l'auteur d'une question
+  isAccepted  Boolean   @default(false)
+  /// Masquée par la modération (ou supprimée par son auteur)
+  hidden      Boolean   @default(false)
+  editedAt    DateTime?
+  usefulCount Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  post    Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User          @relation(fields: [authorId], references: [id])
+  parent  Comment?      @relation("thread", fields: [parentId], references: [id])
+  replies Comment[]     @relation("thread")
+  votes   CommentVote[]
+
+  @@index([postId, createdAt])
+}
+
+/// Vote « utile » sur une réponse (un par utilisateur).
+model CommentVote {
+  userId    String   @db.Uuid
+  commentId String   @db.Uuid
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@index([commentId])
+}
+
+model Reaction {
+  userId    String       @db.Uuid
+  postId    String       @db.Uuid
+  type      ReactionType
+  createdAt DateTime     @default(now())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId, type])
+  @@index([postId])
+}
+
+model Bookmark {
+  userId    String   @db.Uuid
+  postId    String   @db.Uuid
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+}
+
+model Follow {
+  followerId String   @db.Uuid
+  followeeId String   @db.Uuid
+  createdAt  DateTime @default(now())
+  follower   User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followee   User     @relation("followee", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followeeId])
+  @@index([followeeId])
+}
+
+model Community {
+  id          String        @id @db.Uuid
+  slug        String        @unique
+  name        String
+  type        CommunityType
+  description String?
+  countryCode String?       @db.Char(2)
+  memberCount Int           @default(0)
+  createdAt   DateTime      @default(now())
+
+  posts   Post[]
+  members Membership[]
+}
+
+model Membership {
+  userId      String    @db.Uuid
+  communityId String    @db.Uuid
+  role        String    @default("member")
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@id([userId, communityId])
+  @@index([communityId])
+}
+
+/// Journal en ajout seul : la réputation d'un utilisateur est la somme de ses événements.
+model ReputationEvent {
+  id        String   @id @db.Uuid
+  userId    String   @db.Uuid
+  points    Int
+  reason    String
+  sourceId  String?  @db.Uuid
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Notification {
+  id         String    @id @db.Uuid
+  userId     String    @db.Uuid
+  kind       String
+  payload    Json
+  /// Publication concernée (copie du payload) : filtre et regroupement par publication.
+  postId     String?   @db.Uuid
+  readAt     DateTime?
+  /// Épinglée : gardée sous la main, comme une discussion épinglée sur WhatsApp.
+  pinnedAt   DateTime?
+  /// Archivée : sortie de la boîte de réception sans être supprimée.
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, archivedAt, createdAt(sort: Desc)])
+  @@index([userId, postId])
+}
+
+model Report {
+  id           String       @id @db.Uuid
+  reporterId   String       @db.Uuid
+  targetType   ReportTarget
+  targetId     String       @db.Uuid
+  reason       String
+  details      String?
+  status       ReportStatus @default(OPEN)
+  createdAt    DateTime     @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?      @db.Uuid
+  /// Décision prise : « hidden » (contenu masqué) ou « dismissed » (signalement rejeté)
+  resolution   String?
+  reporter     User         @relation(fields: [reporterId], references: [id])
+
+  /// Un même membre ne signale un contenu qu'une fois
+  @@unique([reporterId, targetType, targetId])
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+/// Patron outbox : chaque écriture métier enregistre son événement dans la même transaction,
+/// le worker le publie ensuite (notifications, compteurs, fil, futurs microservices).
+model OutboxEvent {
+  id          String    @id @db.Uuid
+  type        String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([processedAt, createdAt])
+}
+
+/// Poste recherché sur un projet (« cherche dev backend »).
+model TeamOpening {
+  id               String        @id @db.Uuid
+  postId           String        @db.Uuid
+  role             String
+  description      String
+  skills           String[]
+  commitment       Commitment    @default(VOLUNTEER)
+  remote           Boolean       @default(true)
+  status           OpeningStatus @default(OPEN)
+  /// Dénormalisé pour lister les postes ouverts sans jointure coûteuse
+  applicationCount Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  post         Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  applications TeamApplication[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([postId])
+}
+
+/// Candidature d'un dev à un poste.
+model TeamApplication {
+  id          String            @id @db.Uuid
+  openingId   String            @db.Uuid
+  applicantId String            @db.Uuid
+  message     String
+  status      ApplicationStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  decidedAt   DateTime?
+
+  opening   TeamOpening @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  applicant User        @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+
+  @@unique([openingId, applicantId])
+  @@index([applicantId, createdAt(sort: Desc)])
+}
+
+/// Membre de l'équipe d'un projet (après acceptation d'une candidature).
+model ProjectMember {
+  postId    String   @db.Uuid
+  userId    String   @db.Uuid
+  role      String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([userId])
+}

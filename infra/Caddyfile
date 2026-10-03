@@ -1,0 +1,17 @@
+# HTTPS automatique (Let's Encrypt) pour les trois sous-domaines.
+# Pointer les DNS de DOMAIN, api.DOMAIN et auth.DOMAIN vers l'IP du VPS.
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+api.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:4000
+}
+
+auth.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy auth:4001
+}

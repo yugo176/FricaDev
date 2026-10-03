@@ -1,0 +1,36 @@
+{
+  "name": "fricadev",
+  "private": true,
+  "type": "module",
+  "description": "FricaDev — le réseau social des développeurs africains",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "db:generate": "turbo run db:generate",
+    "licenses": "node scripts/check-licenses.mjs",
+    "keys:generate": "node scripts/generate-jwks.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "eslint": "^9.20.0",
+    "globals": "^16.0.0",
+    "jose": "^6.0.0",
+    "license-checker-rseidelsohn": "^4.4.0",
+    "prettier": "^3.5.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.24.0"
+  },
+  "packageManager": "npm@10.9.0",
+  "engines": {
+    "node": ">=22"
+  }
+}

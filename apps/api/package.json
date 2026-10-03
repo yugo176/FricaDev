@@ -1,0 +1,42 @@
+{
+  "name": "@fricadev/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx --env-file-if-exists=../../.env prisma/seed.ts",
+    "set-role": "tsx --env-file-if-exists=../../.env prisma/set-role.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1145.0",
+    "@fricadev/logger": "*",
+    "@fricadev/shared": "*",
+    "@prisma/client": "^6.5.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jose": "^6.0.0",
+    "pino-http": "^10.4.0",
+    "prisma": "^6.5.0",
+    "tsx": "^4.19.0",
+    "uuid": "^11.1.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.0",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}

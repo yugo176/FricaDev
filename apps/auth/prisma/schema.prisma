@@ -1,0 +1,68 @@
+// Schéma « identity » : comptes, identifiants et état du fournisseur OpenID Connect.
+// Ce service deviendra « Se connecter avec FricaDev » pour des applications tierces.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("AUTH_DATABASE_URL")
+  directUrl = env("AUTH_DIRECT_DATABASE_URL")
+}
+
+model Account {
+  /// Devient le `sub` des tokens OIDC
+  id            String   @id @db.Uuid
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  name          String
+  /// Hash argon2id ; null pour un compte créé uniquement via GitHub
+  passwordHash  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  externalIdentities ExternalIdentity[]
+}
+
+/// Connexion via un fournisseur externe (GitHub aujourd'hui, Google demain).
+model ExternalIdentity {
+  id         String   @id @db.Uuid
+  accountId  String   @db.Uuid
+  provider   String
+  providerId String
+  createdAt  DateTime @default(now())
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+}
+
+/// Applications autorisées à utiliser « Se connecter avec FricaDev ».
+model OidcClient {
+  id        String   @id
+  name      String
+  /// Métadonnées OIDC du client (redirect_uris, secret haché, etc.)
+  metadata  Json
+  /// Les clients internes (le site FricaDev) n'affichent pas d'écran de consentement
+  firstParty Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+/// Stockage générique de oidc-provider : sessions, codes, tokens, grants, interactions.
+model OidcPayload {
+  id         String
+  type       String
+  payload    Json
+  grantId    String?
+  userCode   String?
+  uid        String?
+  expiresAt  DateTime?
+  consumedAt DateTime?
+
+  @@id([id, type])
+  @@index([grantId])
+  @@index([uid])
+  @@index([userCode])
+  @@index([expiresAt])
+}
