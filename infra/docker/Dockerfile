@@ -17,10 +17,16 @@ RUN npx turbo@2 prune @fricadev/${APP} --docker
 # 2. Installer les dépendances (couche mise en cache tant que les package.json ne changent pas)
 FROM base AS builder
 ARG APP
+# Présent au build du site : react-router.config.ts en déduit l'origine autorisée.
+ARG WEB_URL
+ENV WEB_URL=${WEB_URL}
 COPY --from=pruner /repo/out/json/ .
 RUN npm ci
 COPY --from=pruner /repo/out/full/ .
-RUN npx turbo run build --filter=@fricadev/${APP}
+# turbo prune ne copie pas les fichiers de la racine : les tsconfig des paquets l'étendent
+COPY tsconfig.base.json ./
+# --env-mode=loose : WEB_URL doit rester visible pour autoriser l'origine du site.
+RUN npx turbo run build --filter=@fricadev/${APP} --env-mode=loose
 RUN npm prune --omit=dev
 
 # 3. Image finale minimale, sans les outils de build
