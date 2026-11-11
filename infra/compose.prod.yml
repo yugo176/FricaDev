@@ -15,7 +15,7 @@ x-node-service: &node-service
 services:
   web:
     <<: *node-service
-    build: { <<: *node-build, args: { APP: web } }
+    build: { <<: *node-build, args: { APP: web, WEB_URL: "${WEB_URL}" } }
     environment:
       AUTH_INTERNAL_URL: http://auth:4001
       API_INTERNAL_URL: http://api:4000

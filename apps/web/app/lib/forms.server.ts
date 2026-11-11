@@ -11,6 +11,10 @@ export function apiErrorToActionData(error: unknown, headers?: HeadersInit, inte
       error.code === 'validation_error'
         ? ((error.details as { fieldErrors?: FieldErrors })?.fieldErrors ?? {})
         : {};
+    // Statut 200 volontaire : en single fetch, React Router traite tout statut
+    // d'erreur renvoyé (non levé) par une action comme une exception générique et
+    // affiche la page d'erreur au lieu des erreurs de champ. `ok: false` suffit à
+    // l'interface pour savoir que la requête a échoué (voir fetcher.data?.ok).
     return data(
       {
         ok: false as boolean,
@@ -18,7 +22,7 @@ export function apiErrorToActionData(error: unknown, headers?: HeadersInit, inte
         error: error.message as string | null,
         fieldErrors,
       },
-      { status: error.status, headers },
+      { status: 200, headers },
     );
   }
   throw error;
